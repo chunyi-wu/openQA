@@ -55,6 +55,35 @@ subtest 'make git commit (error handling)' => sub {
     like $res, qr'^Unable to commit via Git: fatal: (N|n)ot a git repository \(or any', 'Git error message returned';
 };
 
+subtest 'make git cache_ref (error handling)' => sub {
+    # Test for malformed call to cache_ref
+    throws_ok(
+        sub {
+            OpenQA::Git->new({app => $t->app, dir => 'foo/bar', user => $first_user})->cache_ref('test', 'path');
+        },
+        qr/Too few arguments for subroutine/,
+        'OpenQA::Git throws an exception if parameter missing'
+    );
+
+    # Test for unable to cache Git ref
+    my $empty_tmp_dir = tempdir();
+    my $output_file = 'output';
+    my $git = OpenQA::Git->new({app => $t->app, dir => $empty_tmp_dir, user => $first_user});
+    my $res;
+    stdout_like { $res = $git->cache_ref('399a8968db', '', $output_file) }
+    qr/.*\[warn\].*fatal: Not a git repository/i, 'git message found';
+    like $res, qr'^Unable to cache Git ref: fatal: (N|n)ot a git repository \(or any', 'Git error message returned';
+
+    # Tests for existing output file
+    File::Path->make_path($empty_tmp_dir);
+    my $file_ref = File::Touch->new(atime => time - (30 * 60 + 1));
+    $file_ref->touch($output_file);
+    $res = $git->cache_ref('399a8968db', '', $output_file);
+    is($res, undef, 'Output file already existed - no error from touch');
+
+    unlink $output_file;
+};
+
 # setup mocking
 my @executed_commands;
 my $utils_mock = Test::MockModule->new('OpenQA::Git');
@@ -150,6 +179,22 @@ subtest 'git commands with mocked run_cmd_with_log_return_error' => sub {
         ],
         'changes staged and committed',
     ) or diag explain \@executed_commands;
+
+    # test cache_ref
+    @executed_commands = ();
+    is(
+        $git->dir('/repo/path')->cache_ref('399a8968db', '', 'output_file'),
+        undef,
+        'no error occured'
+    );
+    is_deeply(
+        \@executed_commands,
+        [
+            [qw(git -C /repo/path show 399a8968db:./)]
+        ],
+        'cache ref stored in output file',
+    ) or diag explain \@executed_commands;
+
 };
 
 subtest 'saving needle via Git' => sub {
