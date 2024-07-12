@@ -10,6 +10,8 @@ use Mojo::Base -signatures;
 use FindBin;
 use lib "$FindBin::Bin/lib", "$FindBin::Bin/../external/os-autoinst-common/lib";
 use Cwd 'abs_path';
+use OpenQA::Git;
+use OpenQA::Needles;
 use OpenQA::Schema;
 require OpenQA::Test::Database;
 use OpenQA::Test::TimeLimit '10';
@@ -17,6 +19,7 @@ use OpenQA::Task::Needle::Scan;
 use File::Find;
 use Time::Seconds;
 use Test::Output 'combined_like';
+use Test::MockModule;
 use Test::Mojo;
 use Test::Warnings ':report_warnings';
 use Date::Format 'time2str';
@@ -135,6 +138,39 @@ subtest 'needle scan' => sub {
       'file_present set to 0 when scanning as it does not actually exist';
     is $needles->find({filename => 'installer/test-nestedneedle-1.json'})->file_present, 1,
       'existing needle still flagged as present';
+};
+
+subtest 'handling needle paths for needles_ref in locate_needle' => sub {
+    is($module->job->needle_dir,
+        $needledir_fedora, 'needle dir of job deduced from settings (prerequisite for handling relative paths)');
+
+    subtest 'on cache needles success' => sub {
+        my $mock_openqa_git = Test::MockModule->new('OpenQA::Git');
+        $mock_openqa_git->redefine(cache_ref => sub { undef });
+
+        my $absolute_filename = OpenQA::Needles::locate_needle('test-rootneedle.json', $needledir_fedora, '399a8968db');
+        is(
+            $absolute_filename,
+            't/data/openqa/webui/cache/needle-refs/fedora/399a8968db/needles/test-rootneedle.json',
+            'return the temporary directory path where the needles to be cached'
+        );
+    };
+    subtest 'on cache needles failure' => sub {
+        my $mock_openqa_git = Test::MockModule->new('OpenQA::Git');
+        $mock_openqa_git->redefine(cache_ref => sub { 'Fake error' });
+
+        my $absolute_filename;
+        combined_like {
+            $absolute_filename
+              = OpenQA::Needles::locate_needle('test-rootneedle.json', $needledir_fedora, '399a8968db');
+        }
+        qr/An error occurred when looking for ref '399a8968db' of 'test-rootneedle\.json': Fake error/, 'error logged';
+        is(
+            $absolute_filename,
+            't/data/openqa/share/tests/fedora/needles/test-rootneedle.json',
+            'return the default needle path instead'
+        );
+    };
 };
 
 subtest 'handling relative paths in update_needle' => sub {

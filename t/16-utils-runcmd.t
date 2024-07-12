@@ -182,18 +182,9 @@ subtest 'git commands with mocked run_cmd_with_log_return_error' => sub {
 
     # test cache_ref
     @executed_commands = ();
-    is(
-        $git->dir('/repo/path')->cache_ref('399a8968db', '', 'output_file'),
-        undef,
-        'no error occured'
-    );
-    is_deeply(
-        \@executed_commands,
-        [
-            [qw(git -C /repo/path show 399a8968db:./)]
-        ],
-        'cache ref stored in output file',
-    ) or diag explain \@executed_commands;
+    is($git->dir('/repo/path')->cache_ref('399a8968db', '', 'output_file'), undef, 'no error occured');
+    is_deeply(\@executed_commands, [[qw(git -C /repo/path show 399a8968db:./)]], 'cache ref stored in output file',)
+      or diag explain \@executed_commands;
 
 };
 
